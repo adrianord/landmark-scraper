@@ -17,6 +17,15 @@ const logger = new Logger({
   displayLoggerName: false,
 });
 
+const timeConversion: { [key: string]: (duration: number) => number } = {
+  ms: (duration: number) => duration,
+  s: (duration: number) => duration * 1000,
+  m: (duration: number) => timeConversion["s"](duration) * 60,
+  h: (duration: number) => timeConversion["m"](duration) * 60,
+  d: (duration: number) => timeConversion["h"](duration) * 24,
+  w: (duration: number) => timeConversion["d"](duration) * 7,
+}
+
 async function checkApartmentAvailability() {
   try {
     const response = await httpClient.get("");
@@ -28,7 +37,7 @@ async function checkApartmentAvailability() {
       availability: [...el.querySelectorAll("tbody > tr")].map(tr => ({
         apartment: tr.querySelector('[data-label="Apartment"]')?.innerHTML.substring(1) || "",
         rent: rentRangeToNumber(tr.querySelector('[data-label="Rent"]')?.innerHTML),
-        availability: new Date(tr.querySelector('[data-label="Date Available"] span')?.innerHTML || "")
+        availability: parseDate(tr.querySelector('[data-label="Date Available"] span')?.innerHTML)
       }))
     }));
     return apartments;
@@ -44,12 +53,33 @@ function rentRangeToNumber(rentRange?: string): number {
   return Number.parseInt(cleanMin);
 }
 
+function parseDate(dateString?: string): Date {
+  const date = new Date(dateString || "");
+  return isNaN(date.getTime()) ? new Date() : date;
+}
+
+function parseTime(time: string): number {
+  const matches = time.match(/(\d+)(ms|s|m|h|d|w)/);
+  if (!matches) throw new Error(`Time(${time}) did not match regex.`);
+  const [, duration, metric] = matches;
+  const conversion = timeConversion[metric];
+  return conversion(Number.parseInt(duration));
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
 process.on('SIGINT', async () => {
   logger.info('Stopping scrapper');
   process.exit();
 });
 
 (async () => {
-  const apartments = await checkApartmentAvailability();
-  logger.info(apartments);
+  const milliseconds = parseTime("1d");
+  while (true) {
+    const apartments = await checkApartmentAvailability();
+    logger.info(apartments);
+    await delay(milliseconds);
+  }
 })().catch((e) => logger.fatal(e));
