@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as domino from 'domino';
 import { Logger } from 'tslog';
 import { config } from './config';
+import { Apartment } from './types';
 
 const httpClient = axios.create({
   baseURL: config.baseURL,
@@ -26,23 +27,24 @@ const timeConversion: { [key: string]: (duration: number) => number } = {
   w: (duration: number) => timeConversion["d"](duration) * 7,
 }
 
-async function checkApartmentAvailability() {
+async function checkApartmentAvailability(): Promise<Apartment[]> {
   try {
     const response = await httpClient.get("");
     const window = domino.createWindow(response.data);
     const document = window.document;
     const targets = document.querySelectorAll("div#innerformdiv > .row-fluid > .block > table");
-    const apartments = [...targets].map(el => ({
+    const apartments: Apartment[] = [...targets].map<Apartment>(el => ({
       name: el.querySelector("caption")?.innerHTML.replace("Apartment Details and Selection for Floor Plan: ", "") || "UNKNOWN",
       availability: [...el.querySelectorAll("tbody > tr")].map(tr => ({
-        apartment: tr.querySelector('[data-label="Apartment"]')?.innerHTML.substring(1) || "",
+        number: tr.querySelector('[data-label="Apartment"]')?.innerHTML.substring(1) || "",
         rent: rentRangeToNumber(tr.querySelector('[data-label="Rent"]')?.innerHTML),
-        availability: parseDate(tr.querySelector('[data-label="Date Available"] span')?.innerHTML)
+        available: parseDate(tr.querySelector('[data-label="Date Available"] span')?.innerHTML)
       }))
     }));
     return apartments;
   } catch (e) {
     logger.error("Failed to retrieve apartment availability", e);
+    return []
   }
 }
 
